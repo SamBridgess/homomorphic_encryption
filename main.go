@@ -26,6 +26,7 @@ const (
 var (
 	ckksParams ckks.Parameters
 	aesKey     []byte
+	evalKey    rlwe.EvaluationKey
 )
 
 func init() {
@@ -127,6 +128,8 @@ func main() {
 	//CKKS keys
 	ckksSk, ckksPk := ckks.NewKeyGenerator(ckksParams).GenKeyPair()
 
+	fmt.Println("Initial values:", intData, floatData)
+
 	//encrypt initial data
 	encryptedInt, err := encryptCKKS(intData, ckksPk)
 	if err != nil {
@@ -145,13 +148,15 @@ func main() {
 
 	//-------------CLIENT----------------------------------------------
 	retrievedEncryptedInt, retrievedEncryptedFloat := clientSelect()
+	updatedEncryptedInt, _ := addToEncryptedData(retrievedEncryptedInt, 2)
+	updatedEncryptedFloat, _ := addToEncryptedData(retrievedEncryptedFloat, 3)
 	//-------------CLIENT----------------------------------------------
 
-	decryptedInt, err := decryptCKKS(retrievedEncryptedInt, ckksSk)
+	decryptedInt, err := decryptCKKS(updatedEncryptedInt, ckksSk)
 	if err != nil {
 		log.Fatal(err)
 	}
-	decryptedFloat, err := decryptCKKS(retrievedEncryptedFloat, ckksSk)
+	decryptedFloat, err := decryptCKKS(updatedEncryptedFloat, ckksSk)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -164,10 +169,8 @@ func main() {
 
 	//-------------CLIENT-----------------------------------------------
 	decryptedResult := clientDecrypt(encryptedResult)
-	//-------------CLIENT-----------------------------------------------
-
-	fmt.Println("Initial values:", decryptedInt, decryptedFloat)
 	fmt.Println("Decrypted result:", string(decryptedResult))
+	//-------------CLIENT-----------------------------------------------
 }
 
 func clientSelect() ([]byte, []byte) {
@@ -192,4 +195,18 @@ func clientDecrypt(encryptedResult []byte) []byte {
 		log.Fatal(err)
 	}
 	return decryptedResult
+}
+
+func addToEncryptedData(encryptedData []byte, addValue int) ([]byte, error) {
+	ciphertext := ckks.NewCiphertext(ckksParams, 1, ckksParams.MaxLevel(), ckksParams.DefaultScale())
+	err := ciphertext.UnmarshalBinary(encryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("ciphertext creation error: %v", err)
+	}
+	evaluator := ckks.NewEvaluator(ckksParams, evalKey)
+
+	evaluator.AddConst(ciphertext, addValue, ciphertext)
+
+	r, err := ciphertext.MarshalBinary()
+	return r, err
 }
